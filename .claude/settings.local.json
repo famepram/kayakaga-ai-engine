@@ -19,7 +19,12 @@
       "Bash(curl -s http://localhost:8000/health)",
       "Bash(python -c \"import api; print\\('SUCCESS'\\)\")",
       "Bash(pip list *)",
-      "Bash(pip install *)"
+      "Bash(pip install *)",
+      "Bash(python -c \"from agent.tools import execute_tool, TOOL_DEFINITIONS, TOOL_HANDLERS; print\\('SUCCESS'\\)\")",
+      "Bash(python -c \"import sys; sys.path.insert\\(0, '.'\\); import agent.brain; print\\('Import successful'\\)\")",
+      "Bash(python -c \"import agent\")",
+      "Bash(python test_imports.py)",
+      "Bash(python -c \"exec\\(open\\('agent/tools.py'\\).read\\(\\)\\); print\\('execute_tool:', execute_tool\\)\")"
     ]
   }
 }

@@ -696,6 +696,24 @@ TOOL_DEFINITIONS = [
     }
 ]
 
+# ============================================
+# TOOL HANDLERS MAP (for backward compatibility)
+# ============================================
+
+TOOL_HANDLERS = {
+    "get_transactions": handle_get_transactions,
+    "calculate_budget": handle_calculate_budget,
+    "get_account_balances": handle_get_account_balances,
+    "simulate_investment": handle_simulate_investment,
+    "get_goals": handle_get_goals,
+    "categorize_transaction": handle_categorize_transaction,
+    "detect_anomaly": handle_detect_anomaly,
+    "compare_spending": handle_compare_spending,
+    "get_recurring_transactions": handle_get_recurring_transactions,
+    "suggest_savings": handle_suggest_savings,
+    "calculate_goal_recommendation": handle_calculate_goal_recommendation,
+}
+
 # Export execute_tool for use in brain.py
 __all__ = [
     "execute_tool",
