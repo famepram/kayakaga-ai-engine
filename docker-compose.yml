@@ -1,0 +1,70 @@
+version: '3.8'
+
+services:
+  finai-agent:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: finai-agent-api
+    ports:
+      - "8000:8000"
+    environment:
+      # LLM Provider
+      - OPENROUTER_API_KEY=${OPENROUTER_API_KEY}
+      - OPENAI_BASE_URL=${OPENAI_BASE_URL:-https://openrouter.ai/api/v1}
+      - MODEL=${MODEL:-google/gemma-4-31b-it:free}
+
+      # API Configuration
+      - FINAI_API_URL=http://kayakaga-api:8080
+      - KAYAKAGA_API_URL=http://kayakaga-api:8080
+
+      # FastAPI Configuration
+      - AGENT_PORT=8000
+      - AGENT_HOST=0.0.0.0
+
+      # App Environment
+      - APP_ENV=production
+    networks:
+      - finai-network
+    depends_on:
+      kayakaga-api:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  kayakaga-api:
+    # Ganti dengan service kayakaga-api kamu
+    # Ini placeholder - adjust sesuai implementasi kayakaga-api
+    image: kayakaga-api:latest  # Ganti dengan image yang sesuai
+    # build:
+    #   context: ./kayakaga-api
+    #   dockerfile: Dockerfile
+    container_name: kayakaga-api
+    ports:
+      - "8080:8080"
+    environment:
+      # Add environment variables untuk kayakaga-api di sini
+      - DATABASE_URL=${DATABASE_URL}
+      - JWT_SECRET=${JWT_SECRET}
+    networks:
+      - finai-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    restart: unless-stopped
+
+networks:
+  finai-network:
+    driver: bridge
+
+volumes:
+  # Add volumes jika perlu persistent storage
+  # finai-data:
