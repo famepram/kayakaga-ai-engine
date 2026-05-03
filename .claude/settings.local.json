@@ -7,7 +7,12 @@
       "Bash(python -c \"import sys; sys.path.insert\\(0, '.'\\); from agent import FinaiAgent, build_welcome_message; print\\('Import successful'\\)\")",
       "Bash(python -m py_compile agent/tools.py agent/prompts.py)",
       "Bash(python -c \"import sys; sys.path.insert\\(0, '.'\\); from agent.tools import _resolve_account_id; print\\('BCA:', _resolve_account_id\\('BCA'\\)\\); print\\('gopay:', _resolve_account_id\\('gopay'\\)\\); print\\('GoPay:', _resolve_account_id\\('GoPay'\\)\\); print\\('acc_bca:', _resolve_account_id\\('acc_bca'\\)\\)\")",
-      "Bash(python -m py_compile agent/tools.py)"
+      "Bash(python -m py_compile agent/tools.py)",
+      "Bash(python main.py)",
+      "Bash(python -c \"from agent.auth import get_token; print\\('Testing API connection...'\\); token = get_token\\(\\); print\\('✅ Connected! Token:', token[:20] + '...'\\)\")",
+      "Bash(python -m py_compile agent/auth.py agent/tools.py agent/brain.py agent/prompts.py main.py)",
+      "Bash(python -c \"print\\('Testing imports...'\\); from agent import FinaiAgent, TOOL_DEFINITIONS, TOOL_HANDLERS; print\\('✅ Imports OK'\\); print\\('Tools:', list\\(TOOL_HANDLERS.keys\\(\\)\\)\\)\")",
+      "Bash(python test_connection.py)"
     ]
   }
 }

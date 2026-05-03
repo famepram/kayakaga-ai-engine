@@ -6,6 +6,9 @@ python-dotenv>=1.0.0
 pydantic>=2.0.0
 pydantic-settings>=2.0.0
 
+# HTTP Client
+requests>=2.31.0
+
 # Data & Storage
 jsonschema>=4.20.0
 

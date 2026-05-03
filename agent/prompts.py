@@ -3,69 +3,41 @@ Finai Agent System Prompts
 Build context-aware system prompts for the Finai personal finance advisor
 """
 
-import json
-import os
-from typing import Dict, List
+from .auth import api_get
 
 
-def _load_user_context() -> Dict:
-    """Load user profile and accounts for context injection"""
-    # Load user profile
-    profile_path = os.path.join(os.path.dirname(__file__), "../data/user_profile.json")
-    profile = {}
-    if os.path.exists(profile_path):
-        with open(profile_path, 'r', encoding='utf-8') as f:
-            profile = json.load(f)
-
-    # Load accounts
-    accounts_path = os.path.join(os.path.dirname(__file__), "../data/accounts.json")
-    accounts = []
-    if os.path.exists(accounts_path):
-        with open(accounts_path, 'r', encoding='utf-8') as f:
-            accounts = json.load(f)
-
-    return {
-        "profile": profile,
-        "accounts": accounts
-    }
-
-
-def _format_accounts(accounts: List[Dict]) -> str:
-    """Format accounts list for system prompt"""
-    if not accounts:
-        return "Tidak ada akun terdaftar"
-
-    formatted = []
-    for acc in accounts:
-        balance_str = f"Rp {acc.get('balance', 0):,.0f}"
-        primary = " (PRIMARY)" if acc.get('is_primary') else ""
-        formatted.append(f"  - {acc.get('name')}{primary}: {balance_str} ({acc.get('type')})")
-
-    return "\n".join(formatted)
-
-
-def build_system_prompt(user_context: Dict = None) -> str:
+def build_system_prompt() -> str:
     """
-    Build system prompt with user context injection
-
-    Args:
-        user_context: Dict with profile and accounts (optional, will load if not provided)
+    Build system prompt dengan data user dari API.
 
     Returns:
-        Complete system prompt with user context
+        Complete system prompt with user context loaded from API
     """
-    if not user_context:
-        user_context = _load_user_context()
+    # Load user profile dari API
+    profile = api_get("/api/v1/users/profile") or {}
 
-    profile = user_context.get("profile", {})
-    accounts = user_context.get("accounts", [])
+    # Load accounts dari API
+    balances_data = api_get("/api/v1/accounts/balances") or {}
+    accounts = balances_data.get("accounts", [])
+
+    # Format accounts untuk prompt
+    accounts_text = ""
+    if accounts:
+        accounts_list = []
+        for acc in accounts:
+            balance_str = f"Rp {acc.get('balance', 0):,.0f}"
+            primary = " (PRIMARY)" if acc.get('is_primary') else ""
+            accounts_list.append(f"- {acc['name']}{primary}: {balance_str}")
+        accounts_text = "\n".join(accounts_list)
+    else:
+        accounts_text = "- Belum ada akun"
 
     # Extract profile info
-    name = profile.get("name", "User")
-    city = profile.get("city", "Indonesia")
-    profession = profile.get("profession", "")
-    monthly_income = profile.get("monthly_income", 0)
-    risk_profile = profile.get("risk_profile", "undecided")
+    name = profile.get('name', 'User')
+    city = profile.get('city', '-')
+    profession = profile.get('profession', '-')
+    monthly_income = profile.get('monthly_income', 0)
+    risk_profile = profile.get('risk_profile', 'undecided')
 
     # Format income
     income_str = f"Rp {monthly_income:,.0f}" if monthly_income > 0 else "Tidak diketahui"
@@ -81,7 +53,7 @@ PROFIL USER:
 - Profil risiko: {risk_profile}
 
 AKUN AKTIF:
-{_format_accounts(accounts)}
+{accounts_text}
 
 TONE:
 Seperti teman yang paham keuangan — langsung ke poin, tidak kaku, tidak perlu terlalu formal.
@@ -129,7 +101,7 @@ TOOLS YANG TERSEDIA:
 - suggest_savings: Analisis potensi penghematan dan beri saran kategori yang bisa dihemat
 - calculate_goal_recommendation: Hitung scenarios untuk percepat goal (kenaikan tabungan/ETA)
 
-KAPAN MENGGUNAKAN TOOLS BARU:
+KAPAN MENGGUNAKAN TOOLS:
 - detect_anomaly: Kalau user tanya ada transaksi aneh/mencurigakan, atau sebagai proactive check saat overview keuangan
 - compare_spending: Kalau user tanya perbandingan bulan ini vs lalu, atau saat analisis pengeluaran lengkap
 - get_recurring_transactions: Kalau user tanya langganan aktif atau mau review subscription
@@ -141,21 +113,16 @@ Kamu WAJIB memanggil tools untuk SETIAP pertanyaan yang butuh data keuangan.
 DILARANG menjawab dari asumsi atau estimasi tanpa memanggil tools terlebih dahulu.
 Ini berlaku untuk: saldo, transaksi, budget, goals, simulasi investasi, anomali, perbandingan, langganan, saran hemat.
 Tidak ada pengecualian.
-
 """
-
-
 
     return prompt
 
 
-def build_welcome_message(user_context: Dict = None) -> str:
-    """Build welcome message for CLI startup"""
-    if not user_context:
-        user_context = _load_user_context()
-
-    profile = user_context.get("profile", {})
-    name = profile.get("name", "User")
+def build_welcome_message() -> str:
+    """Build welcome message untuk CLI startup"""
+    # Load profile dari API
+    profile = api_get("/api/v1/users/profile") or {}
+    name = profile.get('name', 'User')
 
     return f"""Halo {name}! 👋
 
@@ -169,8 +136,8 @@ Saya bisa bantu kamu:
   🏷️ Kategorisasi transaksi
 
 Ketik pertanyaan kamu, atau coba:
-  "Pengeluaran gw bulan ini gimana?"
-  "Gw punya berapa di semua akun?"
+  "Cek saldo semua akun"
+  "Pengeluaran bulan ini gimana?"
   "Progress goals gw gimana?"
 
 Commands:
@@ -178,24 +145,15 @@ Commands:
   'reset'          - Reset conversation
   '/balance'       - Cek saldo
   '/goals'         - Cek progress goals
+  '/budget'        - Pengeluaran bulan ini
+  '/anomaly'       - Cek transaksi mencurigakan
 
 Mulai yuk! 🚀"""
 
 
-def _format_number(amount: int) -> str:
-    """Format number to Indonesian currency format"""
-    if abs(amount) >= 1000000:
-        return f"{amount/1000000:.1f}jt"
-    elif abs(amount) >= 1000:
-        return f"{amount/1000:.0f}K"
-    else:
-        return str(amount)
-
-
 # For testing
 if __name__ == "__main__":
-    context = _load_user_context()
     print("=== SYSTEM PROMPT ===")
-    print(build_system_prompt(context))
+    print(build_system_prompt())
     print("\n=== WELCOME MESSAGE ===")
-    print(build_welcome_message(context))
+    print(build_welcome_message())

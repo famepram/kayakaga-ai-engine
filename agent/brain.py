@@ -5,12 +5,13 @@ Core agentic loop implementing ReAct pattern for Finai personal finance advisor
 
 import json
 import os
+import requests
 from typing import Dict, List, Optional
 from openai import OpenAI
 from dotenv import load_dotenv
 import httpx
 
-from .prompts import build_system_prompt, _load_user_context
+from .prompts import build_system_prompt
 from .tools import TOOL_DEFINITIONS, TOOL_HANDLERS
 
 load_dotenv()
@@ -40,9 +41,8 @@ class FinaiAgent:
             http_client=http_client
         )
 
-        # Load user context
-        self.user_context = _load_user_context()
-        self.system_prompt = build_system_prompt(self.user_context)
+        # Build system prompt (now loads from API)
+        self.system_prompt = build_system_prompt()
 
         # Conversation history
         self.conversation_history = []
@@ -63,7 +63,8 @@ class FinaiAgent:
         Returns:
             String result dari tool execution
         """
-        if tool_name not in TOOL_HANDLERS:
+        handler = TOOL_HANDLERS.get(tool_name)
+        if not handler:
             return json.dumps({
                 "error": f"Tool '{tool_name}' tidak ditemukan",
                 "available_tools": list(TOOL_HANDLERS.keys())
@@ -71,12 +72,19 @@ class FinaiAgent:
 
         try:
             # Call tool handler
-            tool_func = TOOL_HANDLERS[tool_name]
-            result = tool_func(**tool_input)
+            result = handler(tool_input)
 
             # Return as JSON string
             return json.dumps(result, ensure_ascii=False, default=str)
 
+        except requests.exceptions.ConnectionError:
+            return json.dumps({
+                "error": "Cannot connect to API. Make sure kayakaga-api is running."
+            }, ensure_ascii=False)
+        except requests.exceptions.Timeout:
+            return json.dumps({
+                "error": "API request timed out. Please try again."
+            }, ensure_ascii=False)
         except Exception as e:
             return json.dumps({
                 "error": f"Tool execution failed: {str(e)}",
