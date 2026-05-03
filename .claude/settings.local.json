@@ -12,7 +12,14 @@
       "Bash(python -c \"from agent.auth import get_token; print\\('Testing API connection...'\\); token = get_token\\(\\); print\\('✅ Connected! Token:', token[:20] + '...'\\)\")",
       "Bash(python -m py_compile agent/auth.py agent/tools.py agent/brain.py agent/prompts.py main.py)",
       "Bash(python -c \"print\\('Testing imports...'\\); from agent import FinaiAgent, TOOL_DEFINITIONS, TOOL_HANDLERS; print\\('✅ Imports OK'\\); print\\('Tools:', list\\(TOOL_HANDLERS.keys\\(\\)\\)\\)\")",
-      "Bash(python test_connection.py)"
+      "Bash(python test_connection.py)",
+      "Bash(python api.py)",
+      "Bash(python -c \"import uvicorn; import sys; sys.path.insert\\(0, '.'\\); from api import app; print\\('API module loaded successfully'\\)\")",
+      "Bash(python -c \"import sys; sys.path.insert\\(0, '.'\\); from api import app; print\\('SUCCESS: API module loaded'\\)\")",
+      "Bash(curl -s http://localhost:8000/health)",
+      "Bash(python -c \"import api; print\\('SUCCESS'\\)\")",
+      "Bash(pip list *)",
+      "Bash(pip install *)"
     ]
   }
 }

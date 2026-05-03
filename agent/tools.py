@@ -1,12 +1,13 @@
 """
-Finai Agent Tools - API Version
-All tool handlers using HTTP calls to kayakaga-api
+Finai Agent Tools - API Version with Per-Request Token
+All tool handlers using HTTP calls to kayakaga-api with user_token
 """
 
+import os
 import requests
-from typing import Dict
+from typing import Dict, Optional
 
-from .auth import api_get
+KAYAKAGA_API_URL = os.getenv("KAYAKAGA_API_URL", "http://localhost:8080")
 
 
 # ============================================
@@ -17,30 +18,72 @@ _accounts_cache = None
 _categories_cache = None
 
 
-def _get_accounts() -> list:
+def _get_headers(user_token: str) -> dict:
+    """Build headers dengan user token."""
+    return {
+        "Authorization": f"Bearer {user_token}",
+        "Content-Type": "application/json"
+    }
+
+
+def api_get(endpoint: str, params: dict = None, user_token: str = None) -> dict:
+    """
+    GET request ke kayakaga-api dengan user token.
+
+    Args:
+        endpoint: API endpoint path (contoh: "/api/v1/transactions")
+        params: Query parameters (optional)
+        user_token: JWT token dari user (required)
+
+    Returns:
+        Data dari response API, atau dict dengan error key
+    """
+    if not user_token:
+        return {"error": "No user token provided"}
+
+    try:
+        response = requests.get(
+            f"{KAYAKAGA_API_URL}{endpoint}",
+            headers=_get_headers(user_token),
+            params=params,
+            timeout=15
+        )
+        if not response.ok:
+            return {"error": f"API error {response.status_code}: {response.text}"}
+        return response.json().get("data", {})
+    except requests.exceptions.ConnectionError:
+        return {"error": "Cannot connect to kayakaga-api"}
+    except requests.exceptions.Timeout:
+        return {"error": "Request timeout"}
+    except Exception as e:
+        return {"error": str(e)}
+
+
+def _get_accounts(user_token: str) -> list:
     """Get accounts dari API dengan cache."""
     global _accounts_cache
     if not _accounts_cache:
-        data = api_get("/api/v1/accounts")
-        _accounts_cache = data.get("accounts", []) if isinstance(data, dict) else data
+        data = api_get("/api/v1/accounts", user_token=user_token)
+        _accounts_cache = data.get("accounts", []) if isinstance(data, dict) else (data if isinstance(data, list) else [])
     return _accounts_cache or []
 
 
-def _get_categories() -> list:
+def _get_categories(user_token: str) -> list:
     """Get categories dari API dengan cache."""
     global _categories_cache
     if not _categories_cache:
-        data = api_get("/api/v1/masters/categories")
+        data = api_get("/api/v1/masters/categories", user_token=user_token)
         _categories_cache = data if isinstance(data, list) else []
     return _categories_cache or []
 
 
-def resolve_account_id(account_ref) -> int | None:
+def resolve_account_id(account_ref, user_token: str) -> Optional[int]:
     """
     Resolve nama akun atau ID ke account_id integer.
 
     Args:
         account_ref: Account ID (int) atau nama (string)
+        user_token: JWT token untuk API call
 
     Returns:
         Integer account_id atau None
@@ -55,7 +98,7 @@ def resolve_account_id(account_ref) -> int | None:
         pass
 
     # Cari by nama (case-insensitive)
-    accounts = _get_accounts()
+    accounts = _get_accounts(user_token)
     for acc in accounts:
         if acc["name"].lower() == str(account_ref).lower():
             return acc["id"]
@@ -63,12 +106,13 @@ def resolve_account_id(account_ref) -> int | None:
     return None
 
 
-def resolve_category_id(category_ref) -> int | None:
+def resolve_category_id(category_ref, user_token: str) -> Optional[int]:
     """
     Resolve nama kategori atau code ke category_id.
 
     Args:
         category_ref: Category ID (int) atau nama/code (string)
+        user_token: JWT token untuk API call
 
     Returns:
         Integer category_id atau None
@@ -81,7 +125,7 @@ def resolve_category_id(category_ref) -> int | None:
     except (ValueError, TypeError):
         pass
 
-    categories = _get_categories()
+    categories = _get_categories(user_token)
     ref_lower = str(category_ref).lower()
     for cat in categories:
         if cat["code"].lower() == ref_lower or cat["name"].lower() == ref_lower:
@@ -91,31 +135,27 @@ def resolve_category_id(category_ref) -> int | None:
 
 
 # ============================================
-# TOOL HANDLERS (API Calls)
+# TOOL HANDLERS (dengan user_token)
 # ============================================
 
-def handle_get_transactions(tool_input: dict) -> dict:
-    """
-    Handler untuk get_transactions tool.
-    Ambil histori transaksi dari API.
-    """
+def handle_get_transactions(tool_input: dict, user_token: str = None) -> dict:
+    """Handler untuk get_transactions tool."""
     params = {"period": tool_input.get("period", "month")}
 
     if tool_input.get("account_id"):
-        # Support nama akun (BCA, GoPay) atau ID
-        account_id = resolve_account_id(tool_input["account_id"])
+        account_id = resolve_account_id(tool_input["account_id"], user_token)
         if account_id:
             params["account_id"] = account_id
 
     if tool_input.get("category"):
-        category_id = resolve_category_id(tool_input["category"])
+        category_id = resolve_category_id(tool_input["category"], user_token)
         if category_id:
             params["category_id"] = category_id
 
     if tool_input.get("merchant"):
         params["merchant"] = tool_input["merchant"]
 
-    data = api_get("/api/v1/transactions", params)
+    data = api_get("/api/v1/transactions", params, user_token)
 
     transactions = data.get("transactions", [])
     summary = data.get("summary", {})
@@ -129,19 +169,16 @@ def handle_get_transactions(tool_input: dict) -> dict:
     }
 
 
-def handle_calculate_budget(tool_input: dict) -> dict:
-    """
-    Handler untuk calculate_budget tool.
-    Hitung ringkasan budget dari API.
-    """
+def handle_calculate_budget(tool_input: dict, user_token: str = None) -> dict:
+    """Handler untuk calculate_budget tool."""
     params = {"period": tool_input.get("period", "month")}
 
     if tool_input.get("account_id"):
-        account_id = resolve_account_id(tool_input["account_id"])
+        account_id = resolve_account_id(tool_input["account_id"], user_token)
         if account_id:
             params["account_id"] = account_id
 
-    data = api_get("/api/v1/analytics/budget", params)
+    data = api_get("/api/v1/analytics/budget", params, user_token)
 
     return {
         "income": data.get("income", 0),
@@ -153,24 +190,20 @@ def handle_calculate_budget(tool_input: dict) -> dict:
     }
 
 
-def handle_get_account_balances(tool_input: dict) -> dict:
-    """
-    Handler untuk get_account_balances tool.
-    Ambil saldo akun dari API.
-    """
+def handle_get_account_balances(tool_input: dict, user_token: str = None) -> dict:
+    """Handler untuk get_account_balances tool."""
     params = {}
 
     if tool_input.get("account_id"):
-        account_id = resolve_account_id(tool_input["account_id"])
+        account_id = resolve_account_id(tool_input["account_id"], user_token)
         if account_id:
             params["account_id"] = account_id
 
-    data = api_get("/api/v1/accounts/balances", params)
+    data = api_get("/api/v1/accounts/balances", params, user_token)
 
     accounts = data.get("accounts", [])
     total = data.get("total", 0)
 
-    # Enrich dengan info tambahan
     return {
         "accounts": [
             {
@@ -188,18 +221,15 @@ def handle_get_account_balances(tool_input: dict) -> dict:
     }
 
 
-def handle_simulate_investment(tool_input: dict) -> dict:
-    """
-    Handler untuk simulate_investment tool.
-    Simulasi investasi via API.
-    """
+def handle_simulate_investment(tool_input: dict, user_token: str = None) -> dict:
+    """Handler untuk simulate_investment tool."""
     params = {
         "monthly_amount": tool_input["monthly_amount"],
         "annual_return_pct": tool_input["annual_return_pct"],
         "years": tool_input["years"]
     }
 
-    data = api_get("/api/v1/simulate/investment", params)
+    data = api_get("/api/v1/simulate/investment", params, user_token)
 
     return {
         "future_value": data.get("future_value", 0),
@@ -210,16 +240,13 @@ def handle_simulate_investment(tool_input: dict) -> dict:
     }
 
 
-def handle_get_goals(tool_input: dict) -> dict:
-    """
-    Handler untuk get_goals tool.
-    Ambil goals dari API.
-    """
+def handle_get_goals(tool_input: dict, user_token: str = None) -> dict:
+    """Handler untuk get_goals tool."""
     if tool_input.get("goal_id"):
-        data = api_get(f"/api/v1/goals/{tool_input['goal_id']}")
+        data = api_get(f"/api/v1/goals/{tool_input['goal_id']}", user_token=user_token)
         goals = [data] if data and not data.get("error") else []
     else:
-        data = api_get("/api/v1/goals")
+        data = api_get("/api/v1/goals", user_token=user_token)
         goals = data if isinstance(data, list) else []
 
     return {
@@ -242,11 +269,8 @@ def handle_get_goals(tool_input: dict) -> dict:
     }
 
 
-def handle_categorize_transaction(tool_input: dict) -> dict:
-    """
-    Handler untuk categorize_transaction tool.
-    Logic lokal tanpa API call.
-    """
+def handle_categorize_transaction(tool_input: dict, user_token: str = None) -> dict:
+    """Handler untuk categorize_transaction tool (local logic, no API call)."""
     merchant = tool_input["merchant"].lower()
     amount = tool_input.get("amount", 0)
 
@@ -254,7 +278,7 @@ def handle_categorize_transaction(tool_input: dict) -> dict:
     keyword_map = {
         "income": ["gaji", "salary", "transfer masuk", "bonus"],
         "transport": ["grab", "gojek", "ojek", "taxi", "parkir", "transjakarta", "mrt", "krl", "bus"],
-        "entertainment": ["netflix", "spotify", "youtube", "steam", "game", "cgv", "cgv", "xxi", "cinema", "bioskop"],
+        "entertainment": ["netflix", "spotify", "youtube", "steam", "game", "cgv", "xxi", "cinema", "bioskop"],
         "bills": ["pln", "listrik", "pdam", "air", "internet", "wifi", "bpjs", "telkom", "indihome"],
         "shopping": ["indomaret", "alfamart", "supermarket", "mall", "tokopedia", "shopee", "lazada", "blibli"],
         "health": ["apotek", "klinik", "dokter", "rumah sakit", "obat", "medis", "k24", "kimia farma"],
@@ -280,7 +304,7 @@ def handle_categorize_transaction(tool_input: dict) -> dict:
                 "confidence_level": "High"
             }
 
-    # Default ke other jika tidak ada match
+    # Default ke other
     return {
         "merchant": tool_input["merchant"],
         "amount": amount,
@@ -291,19 +315,16 @@ def handle_categorize_transaction(tool_input: dict) -> dict:
     }
 
 
-def handle_detect_anomaly(tool_input: dict) -> dict:
-    """
-    Handler untuk detect_anomaly tool.
-    Deteksi anomali dari API.
-    """
+def handle_detect_anomaly(tool_input: dict, user_token: str = None) -> dict:
+    """Handler untuk detect_anomaly tool."""
     params = {"period": tool_input.get("period", "month")}
 
     if tool_input.get("account_id"):
-        account_id = resolve_account_id(tool_input["account_id"])
+        account_id = resolve_account_id(tool_input["account_id"], user_token)
         if account_id:
             params["account_id"] = account_id
 
-    data = api_get("/api/v1/analytics/anomalies", params)
+    data = api_get("/api/v1/analytics/anomalies", params, user_token)
     anomalies = data.get("anomalies", [])
 
     return {
@@ -315,19 +336,16 @@ def handle_detect_anomaly(tool_input: dict) -> dict:
     }
 
 
-def handle_compare_spending(tool_input: dict) -> dict:
-    """
-    Handler untuk compare_spending tool.
-    Bandingkan spending dari API.
-    """
+def handle_compare_spending(tool_input: dict, user_token: str = None) -> dict:
+    """Handler untuk compare_spending tool."""
     params = {}
 
     if tool_input.get("account_id"):
-        account_id = resolve_account_id(tool_input["account_id"])
+        account_id = resolve_account_id(tool_input["account_id"], user_token)
         if account_id:
             params["account_id"] = account_id
 
-    data = api_get("/api/v1/analytics/compare", params)
+    data = api_get("/api/v1/analytics/compare", params, user_token)
     comparison = data.get("comparison", [])
 
     # Sort by absolute delta
@@ -351,19 +369,16 @@ def handle_compare_spending(tool_input: dict) -> dict:
     }
 
 
-def handle_get_recurring_transactions(tool_input: dict) -> dict:
-    """
-    Handler untuk get_recurring_transactions tool.
-    Ambil langganan dari API.
-    """
+def handle_get_recurring_transactions(tool_input: dict, user_token: str = None) -> dict:
+    """Handler untuk get_recurring_transactions tool."""
     params = {}
 
     if tool_input.get("account_id"):
-        account_id = resolve_account_id(tool_input["account_id"])
+        account_id = resolve_account_id(tool_input["account_id"], user_token)
         if account_id:
             params["account_id"] = account_id
 
-    data = api_get("/api/v1/analytics/recurring", params)
+    data = api_get("/api/v1/analytics/recurring", params, user_token)
     items = data.get("items", [])
 
     return {
@@ -374,29 +389,23 @@ def handle_get_recurring_transactions(tool_input: dict) -> dict:
     }
 
 
-def handle_suggest_savings(tool_input: dict) -> dict:
-    """
-    Handler untuk suggest_savings tool.
-    Saran hemat dari API.
-    """
+def handle_suggest_savings(tool_input: dict, user_token: str = None) -> dict:
+    """Handler untuk suggest_savings tool."""
     params = {}
     if tool_input.get("target_savings"):
         params["target_savings"] = tool_input["target_savings"]
 
-    data = api_get("/api/v1/analytics/savings-suggestion", params)
+    data = api_get("/api/v1/analytics/savings-suggestion", params, user_token)
 
     return {
-        "suggestions": data.get("suggestions", [])[:5],  # Top 5
+        "suggestions": data.get("suggestions", [])[:5],
         "total_potential_saving": data.get("total_potential_saving", 0),
         "impact_on_goals": data.get("impact_on_goals", "")
     }
 
 
-def handle_calculate_goal_recommendation(tool_input: dict) -> dict:
-    """
-    Handler untuk calculate_goal_recommendation tool.
-    Hitung goal scenarios dari API.
-    """
+def handle_calculate_goal_recommendation(tool_input: dict, user_token: str = None) -> dict:
+    """Handler untuk calculate_goal_recommendation tool."""
     params = {"goal_id": tool_input["goal_id"]}
 
     if tool_input.get("target_months"):
@@ -404,7 +413,7 @@ def handle_calculate_goal_recommendation(tool_input: dict) -> dict:
     if tool_input.get("new_monthly_contribution"):
         params["new_monthly_contribution"] = tool_input["new_monthly_contribution"]
 
-    data = api_get("/api/v1/analytics/goal-recommendation", params)
+    data = api_get("/api/v1/analytics/goal-recommendation", params, user_token)
 
     return {
         "goal_id": tool_input["goal_id"],
@@ -415,6 +424,46 @@ def handle_calculate_goal_recommendation(tool_input: dict) -> dict:
         "current_eta_date": data.get("current_eta_date"),
         "scenarios": data.get("scenarios", [])
     }
+
+
+# ============================================
+# EXECUTE TOOL
+# ============================================
+
+def execute_tool(tool_name: str, tool_input: dict, user_token: str = None) -> dict:
+    """
+    Execute tool dengan user_token.
+
+    Args:
+        tool_name: Nama tool yang akan diexecute
+        tool_input: Parameter untuk tool
+        user_token: JWT token dari user untuk API calls
+
+    Returns:
+        Dict result dari tool execution
+    """
+    tool_map = {
+        "get_transactions": handle_get_transactions,
+        "calculate_budget": handle_calculate_budget,
+        "get_account_balances": handle_get_account_balances,
+        "simulate_investment": handle_simulate_investment,
+        "get_goals": handle_get_goals,
+        "categorize_transaction": handle_categorize_transaction,
+        "detect_anomaly": handle_detect_anomaly,
+        "compare_spending": handle_compare_spending,
+        "get_recurring_transactions": handle_get_recurring_transactions,
+        "suggest_savings": handle_suggest_savings,
+        "calculate_goal_recommendation": handle_calculate_goal_recommendation,
+    }
+
+    handler = tool_map.get(tool_name)
+    if not handler:
+        return {"error": f"Unknown tool: {tool_name}"}
+
+    try:
+        return handler(tool_input, user_token=user_token)
+    except Exception as e:
+        return {"error": str(e)}
 
 
 # ============================================
@@ -561,8 +610,7 @@ TOOL_DEFINITIONS = [
                 "properties": {
                     "period": {
                         "type": "string",
-                        "enum": ["week", "month"],
-                        "description": "Periode yang ingin dicek anomalinya"
+                        "enum": ["week", "month"]
                     },
                     "account_id": {
                         "type": "string",
@@ -648,18 +696,9 @@ TOOL_DEFINITIONS = [
     }
 ]
 
-
-# Tool handler mapping
-TOOL_HANDLERS = {
-    "get_transactions": handle_get_transactions,
-    "calculate_budget": handle_calculate_budget,
-    "get_account_balances": handle_get_account_balances,
-    "simulate_investment": handle_simulate_investment,
-    "get_goals": handle_get_goals,
-    "categorize_transaction": handle_categorize_transaction,
-    "detect_anomaly": handle_detect_anomaly,
-    "compare_spending": handle_compare_spending,
-    "get_recurring_transactions": handle_get_recurring_transactions,
-    "suggest_savings": handle_suggest_savings,
-    "calculate_goal_recommendation": handle_calculate_goal_recommendation
-}
+# Export execute_tool for use in brain.py
+__all__ = [
+    "execute_tool",
+    "TOOL_DEFINITIONS",
+    "TOOL_HANDLERS"
+]

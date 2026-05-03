@@ -6,19 +6,28 @@ Build context-aware system prompts for the Finai personal finance advisor
 from .auth import api_get
 
 
-def build_system_prompt() -> str:
+def build_system_prompt(user_context: dict = None) -> str:
     """
-    Build system prompt dengan data user dari API.
+    Build system prompt dengan data user dari API atau dari parameter.
+
+    Args:
+        user_context: Dict berisi user data (name, city, monthly_income, risk_profile, accounts)
+                     Jika None, akan load dari API (legacy behavior untuk CLI)
 
     Returns:
-        Complete system prompt with user context loaded from API
+        Complete system prompt with user context
     """
-    # Load user profile dari API
-    profile = api_get("/api/v1/users/profile") or {}
+    if user_context:
+        # FastAPI mode: gunakan user_context dari request
+        profile = user_context
+        accounts = user_context.get('accounts', [])
+    else:
+        # CLI mode: load dari API
+        profile = api_get("/api/v1/users/profile") or {}
 
-    # Load accounts dari API
-    balances_data = api_get("/api/v1/accounts/balances") or {}
-    accounts = balances_data.get("accounts", [])
+        # Load accounts dari API
+        balances_data = api_get("/api/v1/accounts/balances") or {}
+        accounts = balances_data.get("accounts", [])
 
     # Format accounts untuk prompt
     accounts_text = ""
@@ -118,11 +127,23 @@ Tidak ada pengecualian.
     return prompt
 
 
-def build_welcome_message() -> str:
-    """Build welcome message untuk CLI startup"""
-    # Load profile dari API
-    profile = api_get("/api/v1/users/profile") or {}
-    name = profile.get('name', 'User')
+def build_welcome_message(user_context: dict = None) -> str:
+    """
+    Build welcome message untuk CLI startup
+
+    Args:
+        user_context: Dict berisi user data (optional, untuk FastAPI mode)
+
+    Returns:
+        Welcome message string
+    """
+    if user_context:
+        # FastAPI mode
+        name = user_context.get('name', 'User')
+    else:
+        # CLI mode: load dari API
+        profile = api_get("/api/v1/users/profile") or {}
+        name = profile.get('name', 'User')
 
     return f"""Halo {name}! 👋
 
