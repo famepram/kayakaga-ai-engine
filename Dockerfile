@@ -19,6 +19,6 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy source
 COPY . .
 
-EXPOSE 8100
+EXPOSE 8000
 
 CMD ["python", "api.py"]
